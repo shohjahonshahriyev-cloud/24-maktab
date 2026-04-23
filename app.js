@@ -344,7 +344,7 @@ function renderAdmin(container) {
     `;
 }
 
-function renderAdminForm(type) {
+function renderAdminForm(type, selectedSubId = null) {
     const container = document.getElementById('app-content');
     let formHTML = `
         <div class="section-title">
@@ -364,7 +364,7 @@ function renderAdminForm(type) {
                         <textarea id="new-news-text" placeholder="Yangilik matni" style="width:100%; height: 100px; background:transparent; border:none; color:white; padding: 10px; outline:none; font-family: inherit;" oninput="updateNewsPreview()"></textarea>
                     </div>
                     <div class="input-group" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); margin-bottom: 15px;">
-                        <input type="file" id="new-news-img-file" accept="image/*" style="color:white; padding: 10px;" onchange="updateNewsPreview()">
+                        <input type="file" id="new-news-img-file" accept="image/*,video/mp4" style="color:white; padding: 10px;" onchange="updateNewsPreview()">
                     </div>
                     <button class="buy-btn" onclick="addNewNews()">Saqlash</button>
                 </div>
@@ -372,8 +372,9 @@ function renderAdminForm(type) {
 
             <div class="glass-card fade-in" style="margin-bottom: 20px; border: 1px solid var(--primary);">
                 <h3 style="margin-bottom:10px; font-size: 0.9rem; color: var(--primary);">Real Ko'rinish (Preview)</h3>
-                <div id="news-preview-container" class="news-card" style="width: 100%; margin: 0;">
-                    <img id="preview-img" src="https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80">
+                <div id="news-preview-container" class="news-card" style="width: 100%; margin: 0; background: #000;">
+                    <img id="preview-img" src="https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80" style="display: block;">
+                    <video id="preview-video" style="display: none; width: 100%; height: 120px; object-fit: cover;" autoplay muted loop></video>
                     <div class="news-content">
                         <span class="news-tag">Yangilik</span>
                         <div id="preview-title" class="news-title">Sarlavha bu yerda chiqadi</div>
@@ -427,8 +428,8 @@ function renderAdminForm(type) {
                 <h3 style="margin-bottom:15px;"><i class="fa-solid fa-circle-question"></i> Test savoli qo'shish</h3>
                 <div class="login-form">
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 5px;">Fanni tanlang:</p>
-                    <select id="q-subject" onchange="renderAdminForm('quiz')" style="background: var(--bg-dark); color: white; padding: 12px; border-radius: 12px; border: 1px solid var(--glass-border); margin-bottom: 15px;">
-                        ${APP_DATA.subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                    <select id="q-subject" onchange="renderAdminForm('quiz', this.value)" style="background: var(--bg-dark); color: white; padding: 12px; border-radius: 12px; border: 1px solid var(--glass-border); margin-bottom: 15px;">
+                        ${APP_DATA.subjects.map(s => `<option value="${s.id}" ${s.id === selectedSubId ? 'selected' : ''}>${s.name}</option>`).join('')}
                     </select>
                     
                     <div class="input-group" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); margin-bottom: 10px;">
@@ -466,7 +467,7 @@ function renderAdminForm(type) {
                 <h3 style="margin-bottom:15px;">Mavjud savollar</h3>
                 <div id="questions-list-container">
                     ${(() => {
-                 const subId = selectedSubId || document.getElementById('q-subject')?.value || 'math';
+                const subId = selectedSubId || document.getElementById('q-subject')?.value || 'math';
                 const subject = APP_DATA.subjects.find(s => s.id === subId);
                 return subject.questions.map((q, idx) => `
                             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:rgba(255,255,255,0.05); border-radius:10px; margin-bottom:10px;">
@@ -671,12 +672,14 @@ async function addNewNews() {
             }
         }
 
+        const isVideo = imgFile && imgFile.type.includes('video');
         const news = {
             id: Date.now(),
             title: title,
             text: text,
             tag: "Yangilik",
-            image: imageUrl
+            image: imageUrl,
+            type: isVideo ? 'video' : 'image'
         };
 
         const response = await fetch(`${API_BASE}/news`, {
@@ -742,7 +745,11 @@ function renderHome(container) {
         <div class="news-slider">
             ${APP_DATA.news.map(n => `
                 <div class="news-card" onclick="openNewsDetail(${n.id})">
-                    <img src="${n.image}" alt="${n.title}" onerror="this.src='https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80'">
+                    ${n.type === 'video' ? `
+                        <video src="${n.image}" style="width:100%; height:120px; object-fit:cover; display:block;" autoplay muted loop playsinline></video>
+                    ` : `
+                        <img src="${n.image}" alt="${n.title}" onerror="this.src='https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80'">
+                    `}
                     <div class="news-content">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span class="news-tag">${n.tag}</span>
@@ -762,15 +769,15 @@ function renderHome(container) {
                 <i class="fa-solid fa-user-tie"></i>
             </div>
             <div class="director-info">
-                <h3 style="margin:0;">${APP_DATA.director.name}</h3>
-                <p style="margin:0; font-size: 0.8rem; color: var(--text-muted);">${APP_DATA.director.role}</p>
-                <a href="tel:${APP_DATA.director.phone}" style="text-decoration:none; color: var(--primary); font-size: 0.85rem; display: block; margin-top: 4px;">
-                    <i class="fa-solid fa-phone"></i> ${APP_DATA.director.phone}
+                <h3 style="margin:0;">${APP_DATA.director?.name || 'Akbar Tohirov'}</h3>
+                <p style="margin:0; font-size: 0.8rem; color: var(--text-muted);">${APP_DATA.director?.role || 'Maktab maslahatchisi'}</p>
+                <a href="tel:${APP_DATA.director?.phone || ''}" style="text-decoration:none; color: var(--primary); font-size: 0.85rem; display: block; margin-top: 4px;">
+                    <i class="fa-solid fa-phone"></i> ${APP_DATA.director?.phone || '+998 90 123 45 67'}
                 </a>
             </div>
         </div>
         <div class="glass-card" style="margin-top: -10px;">
-            <p class="welcome-msg">"${APP_DATA.director.msg}"</p>
+            <p class="welcome-msg">"${APP_DATA.director?.msg || 'Assalomu alaykum!'}"</p>
         </div>
 
         <div class="social-buttons">
@@ -803,7 +810,11 @@ function renderNewsDetail(container) {
             </button>
         </div>
         <div class="glass-card fade-in" style="padding:0; overflow:hidden;">
-            <img src="${n.image}" style="width: 100%; height: 200px; object-fit: cover; display: block;" onerror="this.src='https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80'">
+            ${n.type === 'video' ? `
+                <video src="${n.image}" style="width: 100%; height: 250px; object-fit: cover; display: block;" controls autoplay playsinline></video>
+            ` : `
+                <img src="${n.image}" style="width: 100%; height: 200px; object-fit: cover; display: block;" onerror="this.src='https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80'">
+            `}
             <div style="padding:20px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <span class="news-tag">${n.tag}</span>
@@ -822,12 +833,28 @@ function updateNewsPreview() {
 
     document.getElementById('preview-title').innerText = title || "Sarlavha bu yerda chiqadi";
 
+    const previewImg = document.getElementById('preview-img');
+    const previewVideo = document.getElementById('preview-video');
+
     if (imgFile) {
+        const isVideo = imgFile.type.includes('video');
         const reader = new FileReader();
         reader.onload = (e) => {
-            document.getElementById('preview-img').src = e.target.result;
+            if (isVideo) {
+                previewImg.style.display = 'none';
+                previewVideo.style.display = 'block';
+                previewVideo.src = e.target.result;
+            } else {
+                previewImg.style.display = 'block';
+                previewVideo.style.display = 'none';
+                previewImg.src = e.target.result;
+            }
         };
         reader.readAsDataURL(imgFile);
+    } else {
+        previewImg.style.display = 'block';
+        previewVideo.style.display = 'none';
+        previewImg.src = "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80";
     }
 }
 function renderTest(container) {
