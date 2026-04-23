@@ -49,7 +49,6 @@ const broadcastUpdate = () => {
     const db = readDB();
     io.emit('dataUpdate', { ...db.appData, users: db.users });
 };
-};
 
 // --- API Endpoints ---
 
