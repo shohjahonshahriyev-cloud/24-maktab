@@ -772,7 +772,7 @@ function renderHome(container) {
                 <h3 style="margin:0;">${APP_DATA.director?.name || 'Akbar Tohirov'}</h3>
                 <p style="margin:0; font-size: 0.8rem; color: var(--text-muted);">${APP_DATA.director?.role || 'Maktab maslahatchisi'}</p>
                 <a href="tel:${APP_DATA.director?.phone || ''}" style="text-decoration:none; color: var(--primary); font-size: 0.85rem; display: block; margin-top: 4px;">
-                    <i class="fa-solid fa-phone"></i> ${APP_DATA.director?.phone || '+998 90 123 45 67'}
+                    <i class="fa-solid fa-phone"></i> ${APP_DATA.director?.phone || '+998 91 004 96 00'}
                 </a>
             </div>
         </div>
