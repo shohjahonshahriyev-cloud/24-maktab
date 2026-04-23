@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE = 'https://two4-maktab.onrender.com/api';
+const API_BASE = '/api';
 const socket = io();
 
 let notifCount = 0;
@@ -613,11 +613,12 @@ async function addNewQuestion() {
     }
 }
 
-async function createNewUser() {
+async function addNewUser() {
     const fullName = document.getElementById('new-user-fullname').value;
-    const user = document.getElementById('new-user').value;
-    const pass = document.getElementById('new-pass').value;
-    const role = document.getElementById('new-role').value;
+    const userClass = document.getElementById('new-user-class').value;
+    const user = document.getElementById('new-user-login').value;
+    const pass = document.getElementById('new-user-pass').value;
+    const role = document.getElementById('new-user-role').value;
 
     if (fullName && user && pass) {
         const newUser = {
@@ -625,7 +626,7 @@ async function createNewUser() {
             pass,
             role,
             name: fullName,
-            class: role === 'student' ? "10-A sinf" : (role === 'teacher' ? "O'qituvchi" : "Admin")
+            class: userClass || (role === 'teacher' ? "O'qituvchi" : "Admin")
         };
 
         await fetch(`${API_BASE}/users`, {
@@ -1370,3 +1371,4 @@ function initPullToRefresh() {
         pullDistance = 0;
     });
 }
+
