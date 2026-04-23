@@ -9,9 +9,9 @@ let APP_DATA = {
     user: {
         name: "Abbos Aliev",
         class: "11-B sinf",
-        score: 150,
-        testsTaken: 12,
-        rank: 5
+        score: 0,
+        testsTaken: 0,
+        rank: 0
     },
     news: [],
     subjects: [
@@ -47,6 +47,7 @@ let testState = {
     timer: 30,
     timerInterval: null
 };
+let currentNewsId = null;
 
 // Navigation
 function navigateTo(section) {
@@ -153,7 +154,7 @@ async function handleLogin() {
             };
 
             localStorage.setItem('userSession', JSON.stringify(foundUser));
-            
+
             document.getElementById('login-screen').classList.add('hidden');
             document.querySelectorAll('.top-navbar, #bottom-navbar').forEach(el => {
                 el.classList.remove('hidden');
@@ -179,7 +180,7 @@ function initSocketListeners() {
     socket.on('dataUpdate', async (data) => {
         const { users: fetchedUsers = [], ...appData } = data;
         APP_DATA = { ...APP_DATA, ...appData, users: fetchedUsers };
-        
+
         // Sync current user's stats from server in real-time
         if (APP_DATA.user && APP_DATA.user.username) {
             const currentServerUser = fetchedUsers.find(u => u.user === APP_DATA.user.username);
@@ -237,7 +238,7 @@ async function fetchData() {
         // Separate users from appData
         const { users: fetchedUsers = [], ...appData } = data;
         APP_DATA = { ...APP_DATA, ...appData, users: fetchedUsers };
-        
+
         // Sync current user's stats from server
         if (APP_DATA.user && APP_DATA.user.username) {
             const currentServerUser = fetchedUsers.find(u => u.user === APP_DATA.user.username);
@@ -256,7 +257,7 @@ async function fetchData() {
                 .sort((a, b) => b.score - a.score)
                 .slice(0, 10);
         }
-            
+
     } catch (error) {
         console.error("Ma'lumotlarni yuklashda xato:", error);
     }
@@ -297,6 +298,7 @@ function renderSection() {
         case 'admin': renderAdmin(content); break;
         case 'messages': renderAdminMessages(content); break;
         case 'notifications': renderNotifications(content); break;
+        case 'news-detail': renderNewsDetail(content); break;
     }
 }
 
@@ -728,7 +730,8 @@ const sectionMap = {
     'profile': 'profile',
     'admin': 'admin',
     'messages': 'messages',
-    'notifications': 'notifications'
+    'notifications': 'notifications',
+    'news-detail': 'news-detail'
 };
 
 function renderHome(container) {
@@ -761,6 +764,9 @@ function renderHome(container) {
             <div class="director-info">
                 <h3 style="margin:0;">${APP_DATA.director.name}</h3>
                 <p style="margin:0; font-size: 0.8rem; color: var(--text-muted);">${APP_DATA.director.role}</p>
+                <a href="tel:${APP_DATA.director.phone}" style="text-decoration:none; color: var(--primary); font-size: 0.85rem; display: block; margin-top: 4px;">
+                    <i class="fa-solid fa-phone"></i> ${APP_DATA.director.phone}
+                </a>
             </div>
         </div>
         <div class="glass-card" style="margin-top: -10px;">
@@ -775,28 +781,33 @@ function renderHome(container) {
 }
 
 async function openNewsDetail(id) {
-    const n = APP_DATA.news.find(item => item.id === id);
-    if (!n) return;
-
-    // Increment local view for instant feedback
-    n.views = (n.views || 0) + 1;
-
-    // Increment view on server
+    currentNewsId = id;
+    
+    // Increment view on server (only once when opening)
     fetch(`${API_BASE}/news/${id}/view`, { method: 'POST' });
+    
+    navigateTo('news-detail');
+}
 
-    const content = document.getElementById('app-content');
-    content.innerHTML = `
+function renderNewsDetail(container) {
+    const n = APP_DATA.news.find(item => item.id === currentNewsId);
+    if (!n) {
+        navigateTo('home');
+        return;
+    }
+
+    container.innerHTML = `
         <div class="section-title">
-            <button class="nav-logo" style="border:none; background:none; font-size: 0.9rem;" onclick="renderSection()">
+            <button class="nav-logo" style="border:none; background:none; font-size: 0.9rem;" onclick="navigateTo('home')">
                 <i class="fa-solid fa-chevron-left"></i> Orqaga
             </button>
         </div>
         <div class="glass-card fade-in" style="padding:0; overflow:hidden;">
-            <img src="${n.image}" style="width: 100%; height: 200px; object-fit: cover; display: block;">
+            <img src="${n.image}" style="width: 100%; height: 200px; object-fit: cover; display: block;" onerror="this.src='https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80'">
             <div style="padding:20px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <span class="news-tag">${n.tag}</span>
-                    <span style="font-size:0.8rem; color:var(--text-muted);"><i class="fa-regular fa-eye"></i> ${n.views} marta ko'rildi</span>
+                    <span style="font-size:0.8rem; color:var(--text-muted);"><i class="fa-regular fa-eye"></i> ${n.views || 0} marta ko'rildi</span>
                 </div>
                 <h2 style="margin-bottom:15px; font-size:1.4rem;">${n.title}</h2>
                 <p style="color:var(--text-muted); line-height:1.6; font-size:1rem; white-space: pre-wrap;">${n.text || ''}</p>
@@ -808,9 +819,9 @@ async function openNewsDetail(id) {
 function updateNewsPreview() {
     const title = document.getElementById('new-news-title').value;
     const imgFile = document.getElementById('new-news-img-file').files[0];
-    
+
     document.getElementById('preview-title').innerText = title || "Sarlavha bu yerda chiqadi";
-    
+
     if (imgFile) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -1203,7 +1214,7 @@ function toggleTheme() {
     const body = document.body;
     const icon = document.getElementById('theme-icon');
     const currentTheme = body.getAttribute('data-theme');
-    
+
     if (currentTheme === 'light') {
         body.removeAttribute('data-theme');
         icon.className = 'fa-solid fa-moon';
@@ -1237,11 +1248,11 @@ window.onload = async () => {
     if (session) {
         const user = JSON.parse(session);
         isAdmin = user.role === 'admin';
-        
+
         // Refresh user data from server on load
         await fetchData();
         const fullUser = users.find(u => u.user === user.user); // local users array is a fallback
-        
+
         // But better to use the result of fetchData if server handles multi-user data endpoint
         // For now, let's just use the session user and sync stats
         APP_DATA.user = {
@@ -1340,7 +1351,7 @@ function initPullToRefresh() {
         if (pullDistance > 0) {
             indicator.style.transform = `translateY(${Math.min(pullDistance, 100)}px)`;
             if (app) app.style.transform = `translateY(${Math.min(pullDistance, 100)}px)`;
-            
+
             if (pullDistance > refreshThreshold) {
                 indicator.classList.add('pulling');
             } else {
@@ -1353,11 +1364,11 @@ function initPullToRefresh() {
         if (pullDistance > refreshThreshold) {
             indicator.classList.remove('pulling');
             indicator.classList.add('refreshing');
-            
+
             // Trigger Refresh
             await fetchData();
             renderSection();
-            
+
             setTimeout(() => {
                 indicator.classList.remove('refreshing');
                 indicator.style.transform = 'translateY(0)';
@@ -1367,7 +1378,7 @@ function initPullToRefresh() {
             indicator.style.transform = 'translateY(0)';
             if (app) app.style.transform = 'translateY(0)';
         }
-        
+
         touchStart = 0;
         pullDistance = 0;
     });
