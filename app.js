@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = 'https://two4-maktab.onrender.com/api';
 const socket = io();
 
 let notifCount = 0;
