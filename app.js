@@ -466,7 +466,7 @@ function renderAdminForm(type) {
                 <h3 style="margin-bottom:15px;">Mavjud savollar</h3>
                 <div id="questions-list-container">
                     ${(() => {
-                const subId = document.getElementById('q-subject')?.value || 'math';
+                 const subId = selectedSubId || document.getElementById('q-subject')?.value || 'math';
                 const subject = APP_DATA.subjects.find(s => s.id === subId);
                 return subject.questions.map((q, idx) => `
                             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:rgba(255,255,255,0.05); border-radius:10px; margin-bottom:10px;">
