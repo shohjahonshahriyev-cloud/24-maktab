@@ -25,6 +25,7 @@ let APP_DATA = {
     director: {
         name: "Akbar Tohirov",
         role: "Maktab maslahatchisi",
+        phone: "+998 90 123 45 67",
         msg: "Assalomu alaykum, aziz o'quvchilar! Bilim olishdan aslo to'xtamang. Bizning platforma sizga yordam beradi.",
         image: "school_director_1776859699524.png"
     },
