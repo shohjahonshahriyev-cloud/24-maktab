@@ -33,9 +33,8 @@ const upload = multer({ storage: storage });
 
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static(__dirname));
-app.use('/uploads', express.static(UPLOADS_DIR));
 
+// Move API routes BEFORE static serving
 const readDB = () => {
     const data = fs.readFileSync(DB_FILE, 'utf8');
     return JSON.parse(data);
@@ -51,7 +50,6 @@ const broadcastUpdate = () => {
 };
 
 // --- API Endpoints ---
-
 app.post('/api/upload', upload.single('image'), (req, res) => {
     if (req.file) {
         res.json({ success: true, url: `/uploads/${req.file.filename}` });
@@ -60,19 +58,22 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
     }
 });
 
+app.get('/api/data', (req, res) => {
+    const db = readDB();
+    res.json({ ...db.appData, users: db.users });
+});
+
+// ... rest of API routes will be moved here in next step if needed
+
+app.use(express.static(__dirname));
+app.use('/uploads', express.static(UPLOADS_DIR));
+
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     const db = readDB();
     const user = db.users.find(u => u.user === username && u.pass === password);
     if (user) res.json({ success: true, user });
     else res.status(401).json({ success: false, message: "Login yoki parol noto'g'ri!" });
-});
-
-app.get('/api/data', (req, res) => {
-    const db = readDB();
-    const safeUsers = db.users.map(({ pass, ...u }) => u);
-    // Return appData and full users list for admin (logic already handled in app.js via isAdmin check or full users returned)
-    res.json({ ...db.appData, users: db.users });
 });
 
 app.post('/api/visitor', (req, res) => {
@@ -120,6 +121,7 @@ app.post('/api/questions', (req, res) => {
     const subject = db.appData.subjects.find(s => s.id === subjectId);
     if (subject) {
         subject.questions.push(question);
+        subject.lastUpdated = Date.now(); // Track version
         writeDB(db);
         broadcastUpdate();
         res.json({ success: true });
@@ -131,6 +133,7 @@ app.delete('/api/questions/:subjectId/:index', (req, res) => {
     const subject = db.appData.subjects.find(s => s.id === req.params.subjectId);
     if (subject && subject.questions[req.params.index]) {
         subject.questions.splice(req.params.index, 1);
+        subject.lastUpdated = Date.now(); // Track version
         writeDB(db);
         broadcastUpdate();
         res.json({ success: true });
@@ -164,14 +167,28 @@ app.post('/api/notifications', (req, res) => {
 });
 
 app.post('/api/user/score', (req, res) => {
-    const { username, scoreDelta } = req.body;
+    const { username, scoreDelta, subjectId } = req.body;
     const db = readDB();
-    
+
     // Find the user and update their stats
     const user = db.users.find(u => u.user === username);
     if (user) {
         user.score = (user.score || 0) + scoreDelta;
-        if (scoreDelta > 0) user.testsTaken = (user.testsTaken || 0) + 1;
+        
+        console.log(`Updating score for ${username}. Subject: ${subjectId}, Delta: ${scoreDelta}`);
+
+        // Track completed test (always, regardless of score)
+        if (subjectId) {
+            if (!user.completedTests) user.completedTests = {};
+            user.completedTests[subjectId] = Date.now();
+            console.log(`Marked ${subjectId} as completed for ${username}:`, user.completedTests[subjectId]);
+        } else {
+            console.warn(`No subjectId provided for ${username} score update`);
+        }
+
+        if (scoreDelta > 0) {
+            user.testsTaken = (user.testsTaken || 0) + 1;
+        }
 
         // Sync with APP_DATA.ranking
         let rankUser = db.appData.ranking.find(r => r.name === user.name);
@@ -187,7 +204,7 @@ app.post('/api/user/score', (req, res) => {
 
         writeDB(db);
         broadcastUpdate();
-        res.json({ success: true, newScore: user.score });
+        res.json({ success: true, newScore: user.score, completedTests: user.completedTests });
     } else {
         res.status(404).json({ success: false, message: "Foydalanuvchi topilmadi" });
     }
@@ -196,7 +213,7 @@ app.post('/api/user/score', (req, res) => {
 app.post('/api/users', (req, res) => {
     const db = readDB();
     const newUser = req.body;
-    
+
     // Check if user already exists
     if (db.users.find(u => u.user === newUser.user)) {
         return res.status(400).json({ success: false, message: "Ushbu login band!" });
@@ -207,7 +224,7 @@ app.post('/api/users', (req, res) => {
         score: 0,
         testsTaken: 0
     });
-    
+
     writeDB(db);
     broadcastUpdate();
     res.json({ success: true });
@@ -225,6 +242,44 @@ app.delete('/api/users/:username', (req, res) => {
     writeDB(db);
     broadcastUpdate();
     res.json({ success: true });
+});
+
+app.post('/api/teacher/add-points', (req, res) => {
+    const { teacherUsername, studentUsername, points } = req.body;
+    const db = readDB();
+
+    const teacher = db.users.find(u => u.user === teacherUsername);
+    const student = db.users.find(u => u.user === studentUsername);
+
+    if (!teacher || teacher.role !== 'teacher') {
+        return res.status(403).json({ success: false, message: "Faqat o'qituvchilar ball qo'sha oladi!" });
+    }
+
+    if (!student) {
+        return res.status(404).json({ success: false, message: "O'quvchi topilmadi!" });
+    }
+
+    const pointsNum = parseInt(points);
+    if (isNaN(pointsNum) || pointsNum < 1 || pointsNum > 5) {
+        return res.status(400).json({ success: false, message: "Maksimal 5 ball qo'shish mumkin!" });
+    }
+
+    student.score = (student.score || 0) + pointsNum;
+    
+    // Create a notification for the student
+    const notif = {
+        id: Date.now(),
+        text: `O'qituvchi ${teacher.name} sizga ${pointsNum} ball qo'shdi!`,
+        time: new Date().toLocaleString('uz-UZ').replace(',', ''),
+        read: false,
+        role: 'student',
+        to: student.user
+    };
+    db.appData.notifications.unshift(notif);
+
+    writeDB(db);
+    broadcastUpdate();
+    res.json({ success: true, newScore: student.score });
 });
 
 server.listen(PORT, () => {
