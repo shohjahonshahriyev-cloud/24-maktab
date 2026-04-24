@@ -1538,7 +1538,7 @@ async function buyGift(giftId) {
 function renderRanking(container) {
     container.innerHTML = `
         <div class="section-title">
-            <span>Reyting (Top o'quvchilar)</span>
+            <span>Reyting (1-urin uchun 200 ming  )</span>
         </div>
         <div class="ranking-list">
             ${APP_DATA.ranking.map((r, i) => `
