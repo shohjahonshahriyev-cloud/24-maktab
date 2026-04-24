@@ -20,17 +20,20 @@
     }
   ],
   "appData": {
-    "news": [
-      {
-        "id": 1776875609657,
-        "title": "yangi sayt yaratildi ",
-        "text": "5",
-        "tag": "Yangilik",
-        "image": "/uploads/1776875609348.jpg",
-        "views": 0
-      }
-    ],
+    "news": [],
     "subjects": [
+      {
+        "id": "ona-tili",
+        "name": "Ona tili",
+        "icon": "fa-book",
+        "questions": []
+      },
+      {
+        "id": "adabiyot",
+        "name": "Adabiyot",
+        "icon": "fa-book-open",
+        "questions": []
+      },
       {
         "id": "math",
         "name": "Matematika",
@@ -55,6 +58,18 @@
         "questions": []
       },
       {
+        "id": "kimyo",
+        "name": "Kimyo",
+        "icon": "fa-flask",
+        "questions": []
+      },
+      {
+        "id": "biologiya",
+        "name": "Biologiya",
+        "icon": "fa-dna",
+        "questions": []
+      },
+      {
         "id": "history",
         "name": "Tarix",
         "icon": "fa-landmark",
@@ -64,6 +79,54 @@
         "id": "english",
         "name": "Ingliz tili",
         "icon": "fa-language",
+        "questions": []
+      },
+      {
+        "id": "rus-tili",
+        "name": "Rus tili",
+        "icon": "fa-language",
+        "questions": []
+      },
+      {
+        "id": "geografiya",
+        "name": "Geografiya",
+        "icon": "fa-earth-americas",
+        "questions": []
+      },
+      {
+        "id": "huquq",
+        "name": "Huquq",
+        "icon": "fa-gavel",
+        "questions": []
+      },
+      {
+        "id": "informatika",
+        "name": "Informatika",
+        "icon": "fa-laptop-code",
+        "questions": []
+      },
+      {
+        "id": "texnologiya",
+        "name": "Texnologiya",
+        "icon": "fa-gears",
+        "questions": []
+      },
+      {
+        "id": "tarbiya",
+        "name": "Tarbiya",
+        "icon": "fa-heart",
+        "questions": []
+      },
+      {
+        "id": "jismoniy-tarbiya",
+        "name": "Jismoniy tarbiya",
+        "icon": "fa-person-running",
+        "questions": []
+      },
+      {
+        "id": "musiqa",
+        "name": "Musiqa",
+        "icon": "fa-music",
         "questions": []
       }
     ],
@@ -89,6 +152,12 @@
       "image": "school_director_1776859699524.png"
     },
     "notifications": [
+      {
+        "id": 1777065451440,
+        "text": "1",
+        "time": "2026-04-25 02:17",
+        "read": false
+      },
       {
         "id": 1776875758358,
         "text": "🎁 SOVG'A ALMASHILDI: shohjahon shahriyev o'quvchisi o'zining 1 ballini \"uzum\" sovg'asiga almashtirdi.",
