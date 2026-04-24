@@ -5,6 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>24-Maktab | Premium Educational Platform</title>
+    
+    <!-- PWA & Mobile Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="24-Maktab">
+    <meta name="apple-mobile-web-app-title" content="24-Maktab">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="msapplication-navbutton-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -55,14 +66,16 @@
     <nav class="top-navbar hidden">
         <div class="nav-logo">24-Maktab</div>
         <div class="nav-right">
-            <div id="user-balance" class="user-balance" style="margin-right: 15px; display: flex; align-items: center; gap: 5px; background: rgba(34, 197, 94, 0.2); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(34, 197, 94, 0.3);">
+            <div id="user-balance" class="user-balance"
+                style="margin-right: 15px; display: flex; align-items: center; gap: 5px; background: rgba(34, 197, 94, 0.2); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(34, 197, 94, 0.3);">
                 <i class="fa-solid fa-coins" style="color: #22c55e;"></i>
                 <span id="header-score" style="font-weight: 600; font-size: 0.9rem; color: #22c55e;">0</span>
             </div>
             <button id="theme-toggle" class="nav-profile-btn" onclick="toggleTheme()" style="margin-right: 15px;">
                 <i class="fa-solid fa-moon" id="theme-icon"></i>
             </button>
-            <button id="notif-btn" class="nav-profile-btn" onclick="navigateTo('notifications')" style="margin-right: 15px; position: relative;">
+            <button id="notif-btn" class="nav-profile-btn" onclick="navigateTo('notifications')"
+                style="margin-right: 15px; position: relative;">
                 <i class="fa-solid fa-bell"></i>
                 <span id="notif-badge" class="notif-badge hidden">0</span>
             </button>
@@ -81,6 +94,17 @@
         <!-- Will be injected dynamically -->
     </nav>
 
+    <!-- Custom Modal -->
+    <div id="custom-modal" class="modal-overlay hidden">
+        <div class="glass-card modal-content">
+            <h3 id="modal-title">Tasdiqlash</h3>
+            <p id="modal-text"></p>
+            <div class="modal-actions">
+                <button id="modal-cancel" class="modal-btn cancel">Yo'q</button>
+                <button id="modal-confirm" class="modal-btn confirm">OK</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
