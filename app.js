@@ -4,6 +4,74 @@ const socket = io();
 
 let notifCount = 0;
 
+function getCurrentTime() {
+    const now = new Date();
+    return now.toLocaleString('uz-UZ', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).replace(',', '');
+}
+
+function showCustomModal(title, text, isConfirm = true) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('custom-modal');
+        const titleEl = document.getElementById('modal-title');
+        const textEl = document.getElementById('modal-text');
+        const confirmBtn = document.getElementById('modal-confirm');
+        const cancelBtn = document.getElementById('modal-cancel');
+
+        if (!modal || !titleEl || !textEl || !confirmBtn || !cancelBtn) {
+            if (isConfirm) resolve(confirm(text));
+            else { alert(text); resolve(true); }
+            return;
+        }
+
+        titleEl.innerText = title;
+        textEl.innerText = text;
+
+        if (isConfirm) {
+            cancelBtn.classList.remove('hidden');
+            confirmBtn.innerText = "Ha, albatta";
+        } else {
+            cancelBtn.classList.add('hidden');
+            confirmBtn.innerText = "OK";
+        }
+
+        modal.classList.remove('hidden');
+
+        const handleConfirm = () => {
+            modal.classList.add('hidden');
+            cleanup();
+            resolve(true);
+        };
+
+        const handleCancel = () => {
+            modal.classList.add('hidden');
+            cleanup();
+            resolve(false);
+        };
+
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', handleConfirm);
+            cancelBtn.removeEventListener('click', handleCancel);
+        };
+
+        confirmBtn.addEventListener('click', handleConfirm);
+        cancelBtn.addEventListener('click', handleCancel);
+    });
+}
+
+function showCustomAlert(text) {
+    return showCustomModal("Xabar", text, false);
+}
+
+function showCustomConfirm(title, text) {
+    return showCustomModal(title, text, true);
+}
+
 // App Data (Will be synced with Backend)
 let APP_DATA = {
     user: {
@@ -15,10 +83,22 @@ let APP_DATA = {
     },
     news: [],
     subjects: [
+        { id: 'ona-tili', name: "Ona tili", icon: "fa-book", questions: [] },
+        { id: 'adabiyot', name: "Adabiyot", icon: "fa-book-open", questions: [] },
         { id: 'math', name: "Matematika", icon: "fa-calculator", questions: [] },
         { id: 'physics', name: "Fizika", icon: "fa-atom", questions: [] },
+        { id: 'kimyo', name: "Kimyo", icon: "fa-flask", questions: [] },
+        { id: 'biologiya', name: "Biologiya", icon: "fa-dna", questions: [] },
         { id: 'history', name: "Tarix", icon: "fa-landmark", questions: [] },
-        { id: 'english', name: "Ingliz tili", icon: "fa-language", questions: [] }
+        { id: 'english', name: "Ingliz tili", icon: "fa-language", questions: [] },
+        { id: 'rus-tili', name: "Rus tili", icon: "fa-language", questions: [] },
+        { id: 'geografiya', name: "Geografiya", icon: "fa-earth-americas", questions: [] },
+        { id: 'huquq', name: "Huquq", icon: "fa-gavel", questions: [] },
+        { id: 'informatika', name: "Informatika", icon: "fa-laptop-code", questions: [] },
+        { id: 'texnologiya', name: "Texnologiya", icon: "fa-gears", questions: [] },
+        { id: 'tarbiya', name: "Tarbiya", icon: "fa-heart", questions: [] },
+        { id: 'jismoniy-tarbiya', name: "Jismoniy tarbiya", icon: "fa-person-running", questions: [] },
+        { id: 'musiqa', name: "Musiqa", icon: "fa-music", questions: [] }
     ],
     gifts: [],
     ranking: [],
@@ -35,6 +115,7 @@ let APP_DATA = {
 // State
 let currentSection = 'home';
 let isAdmin = false;
+let isTeacher = false;
 let users = [
     { user: 'admin', pass: '2024', role: 'admin', name: "Tizim Adminstratori", class: "Boshqaruv" },
     { user: 'student', pass: '123', role: 'student', name: "Abbos Aliev", class: "11-B sinf" }
@@ -52,17 +133,27 @@ let currentNewsId = null;
 // Navigation
 function navigateTo(section) {
     // Prevent navigation during active test
-    if (testState.active && !confirm("Test jarayoni to'xtatilsinmi?")) return;
-
-    // Security check for admin section
-    if (section === 'admin' && !isAdmin) {
-        alert("Sizda ushbu bo'limga kirish huquqi yo'q!");
+    if (testState.active) {
+        showCustomConfirm("Diqqat", "Test jarayoni to'xtatilsinmi?").then(quit => {
+            if (quit) {
+                if (testState.active) clearInterval(testState.timerInterval);
+                testState.active = false;
+                proceedNav(section);
+            }
+        });
         return;
     }
 
-    if (testState.active) clearInterval(testState.timerInterval);
-    testState.active = false;
+    // Security check for admin section
+    if (section === 'admin' && !isAdmin) {
+        showCustomAlert("Sizda ushbu bo'limga kirish huquqi yo'q!");
+        return;
+    }
 
+    proceedNav(section);
+}
+
+function proceedNav(section) {
     currentSection = section;
 
     // Hide badge if opening notifications
@@ -80,50 +171,73 @@ function navigateTo(section) {
 function updateNavUI() {
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
+        if (item.id === `nav-${currentSection}`) {
+            item.classList.add('active');
+        }
     });
-    // For admin, 'admin' section maps to the first nav item (Asosiy)
-    const navId = isAdmin && currentSection === 'admin' ? 'nav-home' : `nav-${currentSection}`;
-    const activeNav = document.getElementById(navId);
-    if (activeNav) activeNav.classList.add('active');
 }
 
 function renderBottomNav() {
     const nav = document.getElementById('bottom-navbar');
+    if (!nav) return;
+
+    let html = '';
     if (isAdmin) {
-        nav.innerHTML = `
-            <div class="nav-item active" onclick="navigateTo('admin')" id="nav-home">
+        html = `
+            <div class="nav-item ${currentSection === 'admin' ? 'active' : ''}" onclick="navigateTo('admin')" id="nav-admin">
                 <i class="fa-solid fa-gauge-high"></i>
                 <span>Asosiy</span>
             </div>
-            <div class="nav-item" onclick="navigateTo('messages')" id="nav-messages">
+            <div class="nav-item ${currentSection === 'messages' ? 'active' : ''}" onclick="navigateTo('messages')" id="nav-messages">
                 <i class="fa-solid fa-paper-plane"></i>
                 <span>Xabarlar</span>
             </div>
-            <div class="nav-item" onclick="navigateTo('profile')" id="nav-profile">
+            <div class="nav-item ${currentSection === 'profile' ? 'active' : ''}" onclick="navigateTo('profile')" id="nav-profile">
                 <i class="fa-solid fa-users"></i>
                 <span>Azolar</span>
             </div>
         `;
-    } else {
-        nav.innerHTML = `
-            <div class="nav-item active" onclick="navigateTo('home')" id="nav-home">
+    } else if (isTeacher) {
+        html = `
+            <div class="nav-item ${currentSection === 'home' ? 'active' : ''}" onclick="navigateTo('home')" id="nav-home">
                 <i class="fa-solid fa-house"></i>
                 <span>Asosiy</span>
             </div>
-            <div class="nav-item" onclick="navigateTo('test')" id="nav-test">
-                <i class="fa-solid">📝</i>
+            <div class="nav-item ${currentSection === 'teacher' ? 'active' : ''}" onclick="navigateTo('teacher')" id="nav-teacher">
+                <i class="fa-solid fa-chalkboard-user"></i>
+                <span>Sinflar</span>
+            </div>
+            <div class="nav-item ${currentSection === 'notifications' ? 'active' : ''}" onclick="navigateTo('notifications')" id="nav-notifications">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notif-badge" class="notif-badge hidden">0</span>
+                <span>Xabarlar</span>
+            </div>
+        `;
+    } else {
+        html = `
+            <div class="nav-item ${currentSection === 'home' ? 'active' : ''}" onclick="navigateTo('home')" id="nav-home">
+                <i class="fa-solid fa-house"></i>
+                <span>Asosiy</span>
+            </div>
+            <div class="nav-item ${currentSection === 'test' ? 'active' : ''}" onclick="navigateTo('test')" id="nav-test">
+                <i class="fa-solid fa-circle-question"></i>
                 <span>Test</span>
             </div>
-            <div class="nav-item" onclick="navigateTo('gift')" id="nav-gift">
+            <div class="nav-item ${currentSection === 'gift' ? 'active' : ''}" onclick="navigateTo('gift')" id="nav-gift">
                 <i class="fa-solid fa-gift"></i>
                 <span>Sovg'a</span>
             </div>
-            <div class="nav-item" onclick="navigateTo('ranking')" id="nav-ranking">
+            <div class="nav-item ${currentSection === 'ranking' ? 'active' : ''}" onclick="navigateTo('ranking')" id="nav-ranking">
                 <i class="fa-solid fa-trophy"></i>
                 <span>Reyting</span>
             </div>
+            <div class="nav-item ${currentSection === 'profile' ? 'active' : ''}" onclick="navigateTo('profile')" id="nav-profile">
+                <i class="fa-solid fa-user"></i>
+                <span>Profil</span>
+            </div>
         `;
     }
+    nav.innerHTML = html;
 }
 
 // Login Logic
@@ -143,6 +257,7 @@ async function handleLogin() {
         if (result.success) {
             const foundUser = result.user;
             isAdmin = foundUser.role === 'admin';
+            isTeacher = foundUser.role === 'teacher';
 
             // Map user data
             APP_DATA.user = {
@@ -150,7 +265,9 @@ async function handleLogin() {
                 class: foundUser.class,
                 score: foundUser.score || 0,
                 testsTaken: foundUser.testsTaken || 0,
-                username: foundUser.user
+                username: foundUser.user,
+                role: foundUser.role,
+                completedTests: foundUser.completedTests || {}
             };
 
             localStorage.setItem('userSession', JSON.stringify(foundUser));
@@ -165,14 +282,16 @@ async function handleLogin() {
             updateHeaderScore();
 
             renderBottomNav();
-            currentSection = isAdmin ? 'admin' : 'home';
+            if (isAdmin) currentSection = 'admin';
+            else currentSection = 'home';
+
             renderSection();
         } else {
-            alert(result.message);
+            showCustomAlert(result.message);
         }
     } catch (error) {
         console.error("Login hatosi:", error);
-        alert("Serverga ulanishda xatolik yuz berdi!");
+        showCustomAlert("Serverga ulanishda xatolik yuz berdi!");
     }
 }
 
@@ -187,17 +306,21 @@ function initSocketListeners() {
             if (currentServerUser) {
                 APP_DATA.user.score = currentServerUser.score || 0;
                 APP_DATA.user.testsTaken = currentServerUser.testsTaken || 0;
+                APP_DATA.user.completedTests = currentServerUser.completedTests || {};
                 updateHeaderScore();
             }
         }
 
-        // Re-render if not in a form or test
-        if (!testState.active && !currentSection.includes('Form')) {
+        // Re-render if not in a form or test or showing results
+        if (!testState.active && !testState.showingResults && !currentSection.includes('Form')) {
             renderSection();
         }
     });
 
-    socket.on('newNotification', (notif) => {
+    const handleNewNotif = (notif) => {
+        // Double check filter
+        if (notif.role === 'admin' && !isAdmin) return;
+
         APP_DATA.notifications.unshift(notif);
         if (currentSection !== 'notifications') {
             notifCount++;
@@ -205,13 +328,20 @@ function initSocketListeners() {
         } else {
             renderSection();
         }
-    });
+    };
+
+    socket.on('newNotification', handleNewNotif);
+
+    // Only admins listen to admin-specific notifications
+    if (isAdmin) {
+        socket.on('adminNotification', handleNewNotif);
+    }
 }
 
 function updateHeaderScore() {
     const el = document.getElementById('header-score');
     const balanceBox = document.getElementById('user-balance');
-    if (isAdmin) {
+    if (isAdmin || isTeacher) {
         balanceBox.classList.add('hidden');
     } else {
         balanceBox.classList.remove('hidden');
@@ -234,17 +364,24 @@ function updateNotifBadge() {
 async function fetchData() {
     try {
         const response = await fetch(`${API_BASE}/data`);
+        if (!response.ok) {
+            console.warn(`Server error ${response.status}`);
+            return;
+        }
+
         const data = await response.json();
         // Separate users from appData
         const { users: fetchedUsers = [], ...appData } = data;
         APP_DATA = { ...APP_DATA, ...appData, users: fetchedUsers };
 
         // Sync current user's stats from server
-        if (APP_DATA.user && APP_DATA.user.username) {
-            const currentServerUser = fetchedUsers.find(u => u.user === APP_DATA.user.username);
+        if (APP_DATA.user && (APP_DATA.user.username || APP_DATA.user.user)) {
+            const currentU = APP_DATA.user.username || APP_DATA.user.user;
+            const currentServerUser = fetchedUsers.find(u => u.user === currentU);
             if (currentServerUser) {
                 APP_DATA.user.score = currentServerUser.score || 0;
                 APP_DATA.user.testsTaken = currentServerUser.testsTaken || 0;
+                APP_DATA.user.completedTests = currentServerUser.completedTests || {};
                 updateHeaderScore();
             }
         }
@@ -263,8 +400,9 @@ async function fetchData() {
     }
 }
 
-function handleLogout() {
-    if (confirm("Tizimdan chiqmoqchimisiz?")) {
+async function handleLogout() {
+    const quit = await showCustomConfirm("Chiqish", "Tizimdan chiqmoqchimisiz?");
+    if (quit) {
         isAdmin = false;
         // Clear inputs
         document.getElementById('username').value = '';
@@ -283,22 +421,261 @@ function handleLogout() {
     }
 }
 
-// Section Rendering
+// // Section Rendering
 function renderSection() {
     const content = document.getElementById('app-content');
+    if (!content) return;
+
     content.innerHTML = '';
     content.className = 'fade-in';
 
-    switch (sectionMap[currentSection]) {
-        case 'home': renderHome(content); break;
-        case 'test': renderTest(content); break;
-        case 'gift': renderGift(content); break;
-        case 'ranking': renderRanking(content); break;
-        case 'profile': renderProfile(content); break;
-        case 'admin': renderAdmin(content); break;
-        case 'messages': renderAdminMessages(content); break;
-        case 'notifications': renderNotifications(content); break;
-        case 'news-detail': renderNewsDetail(content); break;
+    try {
+        const section = sectionMap[currentSection] || currentSection;
+        console.log("Rendering section:", section);
+
+        switch (section) {
+            case 'home': renderHome(content); break;
+            case 'test': renderTest(content); break;
+            case 'gift': renderGift(content); break;
+            case 'ranking': renderRanking(content); break;
+            case 'profile': renderProfile(content); break;
+            case 'admin': renderAdmin(content); break;
+            case 'teacher': renderTeacher(content); break;
+            case 'messages': renderAdminMessages(content); break;
+            case 'notifications': renderNotifications(content); break;
+            case 'news-detail': renderNewsDetail(content); break;
+            default:
+                content.innerHTML = `<div style="text-align:center; padding:50px;">
+                    <h3>Sahifa topilmadi: ${section}</h3>
+                    <button class="buy-btn" onclick="navigateTo('home')">Bosh sahifaga qaytish</button>
+                </div>`;
+        }
+    } catch (err) {
+        console.error("Rendering error:", err);
+        content.innerHTML = `<div style="text-align:center; padding:50px; color:var(--text-muted);">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size:3rem; margin-bottom:15px; color:var(--secondary);"></i>
+            <h3>Yuklashda xatolik yuz berdi</h3>
+            <p style="font-size:0.9rem; margin-bottom:20px;">Iltimos, sahifani yangilang yoki birozdan so'ng urinib ko'ring.</p>
+            <button class="buy-btn" onclick="location.reload()">Sahifani yangilash</button>
+        </div>`;
+    }
+}
+
+function renderTeacher(container) {
+    container.innerHTML = `
+        <div class="section-title">
+            <span>O'qituvchi Paneli</span>
+        </div>
+
+        <div id="teacher-view-container" class="fade-in">
+            <div class="glass-card fade-in" style="padding: 20px;">
+                <h3 style="margin-bottom: 15px; font-size: 1.1rem; text-align: center;">Sinflarni tanlang</h3>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                    <!-- 11-sinf -->
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '11')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; color: white;">11</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">11-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <!-- 10-sinf -->
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '10')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; color: white;">10</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">10-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <!-- 9-sinf -->
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '9')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; color: white;">9</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">9-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <!-- 8-sinf -->
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '8')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; color: white;">8</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">8-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <!-- 7-sinf -->
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '7')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; color: white;">7</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">7-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <!-- 6-sinf -->
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '6')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; color: white;">6</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">6-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <!-- 5-sinf -->
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '5')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; color: white;">5</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">5-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderTeacherDashboardHome() {
+    return `
+        <div class="glass-card" style="padding: 20px; text-align: center;">
+            <h3 style="margin-bottom: 10px;">Xush kelibsiz, ${APP_DATA.user.name}!</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">
+                Bugungi yangiliklar va o'quvchilar ko'rsatkichlarini kuzatib boring.
+            </p>
+        </div>
+    `;
+}
+
+async function renderTeacherView(view, param) {
+    const container = document.getElementById('teacher-view-container');
+    if (!container) return;
+
+    if (view === 'classes') {
+        container.innerHTML = `
+            <div class="glass-card fade-in" style="padding: 20px;">
+                <h3 style="margin-bottom: 15px; font-size: 1.1rem; text-align: center;">Sinflarni tanlang</h3>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary-glow); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '11')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary-glow); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800;">11</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">11-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary-glow); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '10')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary-glow); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800;">10</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">10-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border: 1px solid var(--primary-glow); cursor: pointer; background: rgba(var(--primary-rgb), 0.1);" onclick="renderTeacherView('class-students', '9')">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary-glow); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800;">9</div>
+                            <span style="font-size: 1.1rem; font-weight: 600;">9-sinflar</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else if (view === 'class-students') {
+        container.innerHTML = `
+            <div class="glass-card fade-in" style="padding: 20px; text-align: center;">
+                <div class="loading-spinner" style="margin: 0 auto 10px;"></div>
+                <p>O'quvchilar ro'yxati tekshirilmoqda...</p>
+            </div>
+        `;
+
+        await fetchData();
+        const allUsers = APP_DATA.users || [];
+
+        // Robust filtering
+        const classStudents = allUsers.filter(u => {
+            const isStudent = u.role && u.role.toString().toLowerCase() === 'student';
+            const belongsToGrade = u.class && u.class.toString().startsWith(param);
+            return isStudent && belongsToGrade;
+        });
+
+        console.log(`Filtered students for grade ${param}:`, classStudents.length);
+
+        container.innerHTML = `
+            <div class="glass-card fade-in" style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-arrow-left" style="cursor: pointer;" onclick="renderTeacherView('classes')"></i>
+                        <h3 style="font-size: 1.1rem;">${param}-sinf o'quvchilari</h3>
+                    </div>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">${classStudents.length} ta o'quvchi</span>
+                </div>
+                <div style="display: grid; gap: 15px;">
+                    ${classStudents.length > 0 ? classStudents.map(s => `
+                        <div class="glass-card" style="padding: 15px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.02);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <div>
+                                    <div style="font-weight: 600; font-size: 1rem;">${s.name}</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">Sinfi: ${s.class}</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-weight: 700; color: var(--secondary);">${s.score || 0} ball</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 12px;">
+                                <span style="font-size: 0.8rem; color: var(--text-muted); flex-shrink: 0;">Ball qo'shish:</span>
+                                <input type="number" id="pts-${s.user}" min="1" max="5" value="1" 
+                                    style="width: 50px; background: transparent; border: 1px solid var(--glass-border); color: white; padding: 5px; border-radius: 8px; text-align: center;">
+                                <button class="buy-btn" style="padding: 8px 15px; font-size: 0.8rem; flex-grow: 1;" onclick="addPointsToStudent('${s.user}')">
+                                    <i class="fa-solid fa-plus"></i> Qo'shish
+                                </button>
+                            </div>
+                        </div>
+                    `).join('') : `
+                        <div style="text-align: center; padding: 40px 20px; border: 2px dashed var(--glass-border); border-radius: 20px;">
+                            <i class="fa-solid fa-user-slash" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 15px; display: block;"></i>
+                            <p style="color: var(--text-main); font-weight: 600; margin-bottom: 5px;">O'quvchilar topilmadi</p>
+                            <p style="color: var(--text-muted); font-size: 0.85rem;">Bu bo'limda hali ${param}-sinf o'quvchilari mavjud emas.</p>
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    }
+}
+
+async function addPointsToStudent(studentUsername) {
+    const pointsInput = document.getElementById(`pts-${studentUsername}`);
+    const points = parseInt(pointsInput.value);
+
+    if (isNaN(points) || points < 1 || points > 5) {
+        showCustomAlert("Maksimal 5 ball qo'shish mumkin!");
+        return;
+    }
+
+    const confirm = await showCustomConfirm("Ball qo'shish", `${studentUsername}ga ${points} ball qo'shmoqchimisiz?`);
+    if (!confirm) return;
+
+    try {
+        const teacherU = APP_DATA.user.username || APP_DATA.user.user;
+        const response = await fetch(`${API_BASE}/teacher/add-points`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                teacherUsername: teacherU,
+                studentUsername: studentUsername,
+                points: points
+            })
+        });
+
+        if (response.ok) {
+            await fetchData();
+            showCustomAlert("Ball muvaffaqiyatli qo'shildi!");
+            // Re-render current view to show new score
+            const student = APP_DATA.users.find(u => u.user === studentUsername);
+            renderTeacherView('class-students', student.class);
+        } else {
+            const data = await response.json();
+            showCustomAlert(data.message || "Xatolik yuz berdi!");
+        }
+    } catch (error) {
+        console.error("Ball qo'shishda xato:", error);
     }
 }
 
@@ -436,6 +813,10 @@ function renderAdminForm(type, selectedSubId = null) {
                         <input type="text" id="q-text" placeholder="Savol matni" style="color:white; padding: 10px;">
                     </div>
 
+                    <div class="input-group" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); margin-bottom: 10px;">
+                        <input type="file" id="q-img-file" accept="image/*" style="color:white; padding: 10px;">
+                    </div>
+
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
                         <div class="input-group" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);">
                             <input type="text" id="q-opt1" placeholder="A javob" style="color:white; padding: 10px;">
@@ -487,19 +868,42 @@ function renderAdminForm(type, selectedSubId = null) {
                     <div class="input-group" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); margin-bottom: 10px;">
                         <input type="text" id="new-user-fullname" placeholder="Ism va Familiya" style="color:white; padding: 10px;">
                     </div>
-                    <div class="input-group" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); margin-bottom: 10px;">
-                        <input type="text" id="new-user-class" placeholder="Sinfi (masalan: 11-A)" style="color:white; padding: 10px;">
+                    
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 5px;">Roli:</p>
+                    <select id="new-user-role" onchange="toggleUserRoleFields(this.value)" style="background: var(--bg-dark); color: white; padding: 12px; border-radius: 12px; border: 1px solid var(--glass-border); margin-bottom: 15px; width: 100%;">
+                        <option value="student">O'quvchi</option>
+                        <option value="teacher">O'qituvchi</option>
+                    </select>
+
+                    <div id="student-class-fields">
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 5px;">Sinfi:</p>
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                            <input type="number" id="new-user-grade" placeholder="Sinf (1-11)" min="1" max="11" style="width: 50%; background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); color: white; padding: 10px; border-radius: 12px;">
+                            <select id="new-user-letter" style="width: 50%; background: var(--bg-dark); color: white; padding: 10px; border-radius: 12px; border: 1px solid var(--glass-border);">
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="V">V</option>
+                                <option value="G">G</option>
+                                <option value="D">D</option>
+                                <option value="E">E</option>
+                            </select>
+                        </div>
                     </div>
+
+                    <div id="teacher-subject-fields" class="hidden">
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 5px;">Fani:</p>
+                        <select id="new-user-subject" style="background: var(--bg-dark); color: white; padding: 12px; border-radius: 12px; border: 1px solid var(--glass-border); margin-bottom: 15px; width: 100%;">
+                            ${APP_DATA.subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        </select>
+                    </div>
+
                     <div class="input-group" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); margin-bottom: 10px;">
                         <input type="text" id="new-user-login" placeholder="Login (username)" style="color:white; padding: 10px;">
                     </div>
                     <div class="input-group" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); margin-bottom: 10px;">
                         <input type="text" id="new-user-pass" placeholder="Parol" style="color:white; padding: 10px;">
                     </div>
-                    <select id="new-user-role" style="background: var(--bg-dark); color: white; padding: 12px; border-radius: 12px; border: 1px solid var(--glass-border); margin-bottom: 15px; width: 100%;">
-                        <option value="student">O'quvchi</option>
-                        <option value="teacher">O'qituvchi</option>
-                    </select>
+                    
                     <button class="buy-btn" onclick="addNewUser()">Yaratish</button>
                 </div>
             </div>
@@ -528,7 +932,7 @@ async function sendAdminMsg() {
         const notif = {
             id: Date.now(),
             text: msg,
-            time: "Hozir",
+            time: getCurrentTime(),
             read: false
         };
 
@@ -540,18 +944,24 @@ async function sendAdminMsg() {
 
         await fetchData();
         document.getElementById('notif-badge').classList.remove('hidden');
-        alert("Xabar barcha o'quvchilarga yuborildi!");
+        showCustomAlert("Xabar barcha o'quvchilarga yuborildi!");
         document.getElementById('admin-msg').value = '';
     }
 }
 
 function renderNotifications(container) {
+    // Filter notifications based on user role
+    const visibleNotifs = APP_DATA.notifications.filter(n => {
+        if (n.role === 'admin') return isAdmin;
+        return true;
+    });
+
     container.innerHTML = `
         <div class="section-title">
             <span>Bildirishnomalar</span>
         </div>
         <div class="notif-list">
-            ${APP_DATA.notifications.length > 0 ? APP_DATA.notifications.map(n => `
+            ${visibleNotifs.length > 0 ? visibleNotifs.map(n => `
                 <div class="glass-card fade-in" style="margin-bottom: 15px; border-left: 4px solid ${n.read ? 'var(--glass-border)' : 'var(--primary)'};">
                     <p style="font-size: 1rem; margin-bottom: 10px;">${n.text}</p>
                     <span style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-regular fa-clock"></i> ${n.time}</span>
@@ -584,7 +994,7 @@ async function addNewGift() {
         });
 
         await fetchData();
-        alert("Yangi sovg'a qo'shildi!");
+        showCustomAlert("Yangi sovg'a qo'shildi!");
         renderAdmin(document.getElementById('app-content'));
     }
 }
@@ -592,6 +1002,7 @@ async function addNewGift() {
 async function addNewQuestion() {
     const subjectId = document.getElementById('q-subject').value;
     const text = document.getElementById('q-text').value;
+    const imgFile = document.getElementById('q-img-file').files[0];
     const options = [
         document.getElementById('q-opt1').value,
         document.getElementById('q-opt2').value,
@@ -600,8 +1011,17 @@ async function addNewQuestion() {
     ];
     const correct = parseInt(document.getElementById('q-correct').value);
 
+    let imageUrl = null;
+    if (imgFile) {
+        const formData = new FormData();
+        formData.append('image', imgFile);
+        const uploadRes = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+        const result = await uploadRes.json();
+        if (result.success) imageUrl = result.url;
+    }
+
     if (text && options.every(o => o)) {
-        const question = { q: text, options, correct };
+        const question = { q: text, options, correct, image: imageUrl };
 
         await fetch(`${API_BASE}/questions`, {
             method: 'POST',
@@ -690,19 +1110,20 @@ async function addNewNews() {
 
         if (response.ok) {
             await fetchData();
-            alert("Yangilik muvaffaqiyatli qo'shildi!");
+            showCustomAlert("Yangilik muvaffaqiyatli qo'shildi!");
             renderAdminForm('news'); // Stay in news form to see the list
         } else {
             const errData = await response.json();
-            alert("Xatolik: " + (errData.message || "Yangilikni saqlab bo'lmadi"));
+            showCustomAlert("Xatolik: " + (errData.message || "Yangilikni saqlab bo'lmadi"));
         }
     } else {
-        alert("Sarlavha va matnni kiriting!");
+        showCustomAlert("Sarlavha va matnni kiriting!");
     }
 }
 
 async function deleteNews(id) {
-    if (confirm("Ushbu yangilikni o'chirmoqchimisiz?")) {
+    const quit = await showCustomConfirm("O'chirish", "Ushbu yangilikni o'chirmoqchimisiz?");
+    if (quit) {
         await fetch(`${API_BASE}/news/${id}`, { method: 'DELETE' });
         await fetchData();
         renderAdminForm('news');
@@ -710,7 +1131,8 @@ async function deleteNews(id) {
 }
 
 async function deleteGift(id) {
-    if (confirm("Ushbu sovg'ani o'chirmoqchimisiz?")) {
+    const quit = await showCustomConfirm("O'chirish", "Ushbu sovg'ani o'chirmoqchimisiz?");
+    if (quit) {
         await fetch(`${API_BASE}/gifts/${id}`, { method: 'DELETE' });
         await fetchData();
         renderAdminForm('gift');
@@ -718,7 +1140,8 @@ async function deleteGift(id) {
 }
 
 async function deleteQuestion(subjectId, index) {
-    if (confirm("Ushbu savolni o'chirmoqchimisiz?")) {
+    const quit = await showCustomConfirm("O'chirish", "Ushbu savolni o'chirmoqchimisiz?");
+    if (quit) {
         await fetch(`${API_BASE}/questions/${subjectId}/${index}`, { method: 'DELETE' });
         await fetchData();
         renderAdminForm('quiz');
@@ -789,10 +1212,10 @@ function renderHome(container) {
 
 async function openNewsDetail(id) {
     currentNewsId = id;
-    
+
     // Increment view on server (only once when opening)
     fetch(`${API_BASE}/news/${id}/view`, { method: 'POST' });
-    
+
     navigateTo('news-detail');
 }
 
@@ -868,87 +1291,83 @@ function renderTest(container) {
             <span>Fanlar bo'yicha testlar</span>
         </div>
         <div class="test-grid">
-            ${APP_DATA.subjects.map(s => `
-                <div class="glass-card subject-card" onclick="startTest('${s.id}')" style="position: relative;">
+            ${APP_DATA.subjects.map(s => {
+        const qCount = s.questions.length;
+        const isLocked = qCount === 0;
+        const lastTaken = (APP_DATA.user.completedTests || {})[s.id] || 0;
+        const lastUpdated = s.lastUpdated || 0;
+        const isCompleted = lastTaken > lastUpdated;
+
+        return `
+                <div class="glass-card subject-card ${isCompleted ? 'completed' : ''}" style="position: relative;">
                     <i class="fa-solid ${s.icon} subject-icon"></i>
                     <h3>${s.name}</h3>
-                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 5px;">
-                        <i class="fa-solid fa-list-check"></i> ${s.questions.length} ta savol
-                    </div>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin: 5px 0;">${qCount} ta savol</p>
+                    ${isCompleted ? '<span class="status-badge" style="background: rgba(34,197,94,0.2); color: #22c55e; padding: 4px 8px; border-radius: 8px; font-size: 0.7rem; margin-bottom: 10px; display: inline-block;">Yechilgan ✅</span>' : ''}
+                    <button class="buy-btn" ${isLocked || isCompleted ? 'disabled' : ''} onclick="startTest('${s.id}')">
+                        ${isCompleted ? 'Yechilgan' : (isLocked ? 'Tez kunda' : 'Boshlash')}
+                    </button>
                 </div>
-            `).join('')}
+            `;
+    }).join('')}
         </div>
     `;
 }
 
 async function startTest(subjectId) {
     const subject = APP_DATA.subjects.find(s => s.id === subjectId);
+    if (!subject || subject.questions.length === 0) return;
+
+    // Check if test was already completed for this version
+    const lastTaken = (APP_DATA.user.completedTests || {})[subjectId] || 0;
+    const lastUpdated = subject.lastUpdated || 0;
+
+    if (lastTaken > lastUpdated) {
+        showCustomAlert("Siz ushbu testni yechib bo'lgansiz! Yangi savollar qo'shilishini kuting.");
+        return;
+    }
+
     testState = {
         active: true,
-        subject: subject,
-        currentQuestion: 0,
+        showingResults: false,
+        subjectId,
+        subjectName: subject.name,
+        questions: [...subject.questions].sort(() => Math.random() - 0.5),
+        currentIdx: 0,
         score: 0,
-        timer: 30
+        timer: 100,
+        timerInterval: null
     };
-
-    // Real-time notification to admin
-    if (!isAdmin) {
-        fetch(`${API_BASE}/notifications`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: Date.now(),
-                text: `📝 TEST BOSHLANDI: ${APP_DATA.user.name} o'quvchisi ${subject.name} fanidan test yechishni boshladi.`,
-                time: "Hozir",
-                read: false
-            })
-        });
-    }
 
     renderSection();
     startTimer();
 }
 
 function startTimer() {
-    if (testState.timerInterval) {
-        clearInterval(testState.timerInterval);
-    }
-
-    testState.timer = 30;
-    const timerEl = document.getElementById('timer-val');
+    if (testState.timerInterval) clearInterval(testState.timerInterval);
+    testState.timer = 100;
+    const timerEl = document.getElementById('test-timer');
     if (timerEl) timerEl.innerText = testState.timer;
 
     testState.timerInterval = setInterval(() => {
         testState.timer--;
-        const el = document.getElementById('timer-val');
-        if (el) el.innerText = testState.timer;
-
+        if (timerEl) timerEl.innerText = testState.timer;
         if (testState.timer <= 0) {
             clearInterval(testState.timerInterval);
-            handleAnswer(null);
+            nextQuestion();
         }
     }, 1000);
 }
 
-async function handleAnswer(selectedIdx) {
-    clearInterval(testState.timerInterval);
-    const question = testState.subject.questions[testState.currentQuestion];
+function checkAnswer(idx) {
+    const q = testState.questions[testState.currentIdx];
+    if (idx === q.correct) testState.score++;
+    nextQuestion();
+}
 
-    if (selectedIdx === question.correct) {
-        testState.score++;
-        // Add 1 ball to backend balance for current user
-        if (APP_DATA.user && APP_DATA.user.username) {
-            await fetch(`${API_BASE}/user/score`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: APP_DATA.user.username, scoreDelta: 1 })
-            });
-        }
-    }
-
-    testState.currentQuestion++;
-
-    if (testState.currentQuestion < testState.subject.questions.length) {
+function nextQuestion() {
+    testState.currentIdx++;
+    if (testState.currentIdx < testState.questions.length) {
         renderSection();
         startTimer();
     } else {
@@ -957,79 +1376,79 @@ async function handleAnswer(selectedIdx) {
 }
 
 async function finishTest() {
+    console.log("finishTest called. subjectId:", testState.subjectId);
     testState.active = false;
-    clearInterval(testState.timerInterval);
+    testState.showingResults = true;
+    if (testState.timerInterval) clearInterval(testState.timerInterval);
 
-    const total = testState.subject.questions.length;
-    const score = testState.score;
+    try {
+        const payload = {
+            username: APP_DATA.user.username,
+            scoreDelta: testState.score,
+            subjectId: testState.subjectId
+        };
+        console.log("Sending score update payload:", payload);
 
-    // Real-time notification to admin about result
-    if (!isAdmin) {
-        fetch(`${API_BASE}/notifications`, {
+        // Immediate local update for instant UI feedback
+        if (!APP_DATA.user.completedTests) APP_DATA.user.completedTests = {};
+        APP_DATA.user.completedTests[testState.subjectId] = Date.now();
+
+        await fetch(`${API_BASE}/user/score`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: Date.now(),
-                text: `✅ TEST YAKUNLANDI: ${APP_DATA.user.name} - ${testState.subject.name}: ${score}/${total} natija ko'rsatdi.`,
-                time: "Hozir",
-                read: false
-            })
+            body: JSON.stringify(payload)
         });
-    }
 
-    const content = document.getElementById('app-content');
-    content.innerHTML = `
-        <div class="glass-card fade-in" style="text-align: center; padding: 40px 20px;">
-            <i class="fa-solid fa-circle-check" style="font-size: 4rem; color: var(--primary); margin-bottom: 20px;"></i>
-            <h2 style="margin-bottom: 10px;">Test yakunlandi!</h2>
-            <p style="color: var(--text-muted); margin-bottom: 30px;">Sizning natijangiz:</p>
-            
-            <div style="display: flex; justify-content: center; gap: 30px; margin-bottom: 30px;">
-                <div>
-                    <div style="font-size: 2rem; font-weight: 700; color: #22c55e;">${testState.score}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">To'g'ri</div>
+        await fetchData();
+
+        // Show result screen
+        const content = document.getElementById('app-content');
+        const total = testState.questions.length;
+        content.innerHTML = `
+            <div class="glass-card fade-in" style="text-align: center; padding: 40px 20px;">
+                <i class="fa-solid fa-circle-check" style="font-size: 4rem; color: var(--primary); margin-bottom: 20px;"></i>
+                <h2 style="margin-bottom: 10px;">Test yakunlandi!</h2>
+                <p style="color: var(--text-muted); margin-bottom: 30px;">Sizning natijangiz:</p>
+                
+                <div style="display: flex; justify-content: center; gap: 30px; margin-bottom: 30px;">
+                    <div>
+                        <div style="font-size: 2rem; font-weight: 700; color: #22c55e;">${testState.score}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">To'g'ri</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 2rem; font-weight: 700; color: #ef4444;">${total - testState.score}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">Noto'g'ri</div>
+                    </div>
                 </div>
-                <div>
-                    <div style="font-size: 2rem; font-weight: 700; color: #ef4444;">${total - testState.score}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">Noto'g'ri</div>
-                </div>
+
+                <button class="buy-btn" style="width: 100%;" onclick="testState.showingResults = false; navigateTo('test')">
+                    Bosh sahifaga qaytish
+                </button>
             </div>
-
-            <button class="social-btn tg-btn" style="width: 100%; border: none; cursor: pointer;" onclick="navigateTo('test')">
-                Bosh sahifaga qaytish
-            </button>
-        </div>
-    `;
+        `;
+    } catch (error) {
+        console.error("Testni yakunlashda xato:", error);
+    }
 }
 
 function renderActiveQuiz(container) {
-    const question = testState.subject.questions[testState.currentQuestion];
-    if (!question) {
-        finishTest();
-        return;
-    }
+    const q = testState.questions[testState.currentIdx];
 
     container.innerHTML = `
-        <div class="test-container fade-in">
-            <div class="test-header">
-                <span>${testState.subject.name}</span>
-                <span class="test-timer"><i class="fa-regular fa-clock"></i> <span id="timer-val">${testState.timer}</span>s</span>
+        <div class="test-header glass-card">
+            <div class="test-info">
+                <h3>${testState.subjectName}</h3>
+                <p>Savol: ${testState.currentIdx + 1}/${testState.questions.length}</p>
             </div>
-            
-            <div class="test-progress">
-                <div class="progress-fill" style="width: ${(testState.currentQuestion / testState.subject.questions.length) * 100}%"></div>
-            </div>
+            <div class="test-timer" id="test-timer">${testState.timer}</div>
+        </div>
 
-            <div class="question-box">
-                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 10px;">Savol ${testState.currentQuestion + 1} / ${testState.subject.questions.length}</p>
-                <h3 style="font-size: 1.2rem;">${question.q}</h3>
-            </div>
-
+        <div class="question-card glass-card">
+            ${q.image ? `<img src="${q.image}" class="question-img" style="width: 100%; border-radius: 12px; margin-bottom: 15px;">` : ''}
+            <h2 class="question-text">${q.q}</h2>
             <div class="options-list">
-                ${question.options.map((opt, idx) => `
-                    <button class="option-btn" onclick="handleAnswer(${idx})">
-                        ${String.fromCharCode(65 + idx)}) ${opt}
-                    </button>
+                ${q.options.map((opt, i) => `
+                    <button class="option-btn" onclick="checkAnswer(${i})">${opt}</button>
                 `).join('')}
             </div>
         </div>
@@ -1069,11 +1488,17 @@ function renderGift(container) {
 }
 
 async function buyGift(giftId) {
+    console.log("buyGift called with ID:", giftId);
     const gift = APP_DATA.gifts.find(g => g.id === giftId);
-    if (!gift) return;
+    if (!gift) {
+        console.error("Gift not found with ID:", giftId);
+        return;
+    }
 
     if (APP_DATA.user.score >= gift.points) {
-        if (confirm(`${gift.name}ni ${gift.points} ballga almashtirmoqchimisiz?`)) {
+        const confirmed = await showCustomConfirm("Tasdiqlash", `${gift.name}ni ${gift.points} ballga almashtirmoqchimisiz?`);
+        console.log("Confirmation result:", confirmed);
+        if (confirmed) {
             try {
                 // Deduct points on backend
                 await fetch(`${API_BASE}/user/score`, {
@@ -1086,8 +1511,9 @@ async function buyGift(giftId) {
                 const notif = {
                     id: Date.now(),
                     text: `🎁 SOVG'A ALMASHILDI: ${APP_DATA.user.name} o'quvchisi o'zining ${gift.points} ballini "${gift.name}" sovg'asiga almashtirdi.`,
-                    time: "Hozir",
-                    read: false
+                    time: getCurrentTime(),
+                    read: false,
+                    role: 'admin'
                 };
 
                 await fetch(`${API_BASE}/notifications`, {
@@ -1097,15 +1523,15 @@ async function buyGift(giftId) {
                 });
 
                 await fetchData();
-                alert("Tabriklaymiz! Sovg'a muvaffaqiyatli xarid qilindi. Uni maktab ma'muriyatidan olishingiz mumkin.");
+                showCustomAlert("Tabriklaymiz! 🎉\nSovg'a muvaffaqiyatli xarid qilindi. Uni olish uchun maktab mas'ullariga murojaat qiling.");
                 renderSection();
             } catch (error) {
                 console.error("Sovg'a almashtirishda xato:", error);
-                alert("Xatolik yuz berdi!");
+                showCustomAlert("Xatolik yuz berdi!");
             }
         }
     } else {
-        alert("Ballaringiz yetarli emas!");
+        showCustomAlert("Ballaringiz yetarli emas!");
     }
 }
 
@@ -1196,20 +1622,31 @@ function renderProfile(container) {
                 `).join('') : '<p>Azolar yuklanmoqda...</p>'}
             </div>
         ` : `
-            <div class="stats-grid">
-                <div class="glass-card stat-box">
-                    <div class="stat-val">${APP_DATA.user.score}</div>
-                    <div class="stat-label">Umumiy ball</div>
+            ${isTeacher ? `
+                <div class="glass-card" style="padding: 30px; text-align: center; margin-bottom: 20px;">
+                    <i class="fa-solid fa-chalkboard-user" style="font-size: 3rem; color: var(--primary); margin-bottom: 15px;"></i>
+                    <h3 style="margin-bottom: 10px;">O'qituvchi Kabineti</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">
+                        Siz tizimda o'qituvchi sifatida ro'yxatdan o'tgansiz. 
+                        O'quvchilarga ball qo'shish uchun "Asosiy" bo'limiga o'ting.
+                    </p>
                 </div>
-                <div class="glass-card stat-box">
-                    <div class="stat-val">${APP_DATA.user.testsTaken}</div>
-                    <div class="stat-label">Testlar</div>
+            ` : `
+                <div class="stats-grid">
+                    <div class="glass-card stat-box">
+                        <div class="stat-val">${APP_DATA.user.score}</div>
+                        <div class="stat-label">Umumiy ball</div>
+                    </div>
+                    <div class="glass-card stat-box">
+                        <div class="stat-val">${APP_DATA.user.testsTaken}</div>
+                        <div class="stat-label">Testlar</div>
+                    </div>
+                    <div class="glass-card stat-box">
+                        <div class="stat-val">#${APP_DATA.user.rank || '-'}</div>
+                        <div class="stat-label">Reyting</div>
+                    </div>
                 </div>
-                <div class="glass-card stat-box">
-                    <div class="stat-val">#${APP_DATA.user.rank || '-'}</div>
-                    <div class="stat-label">Reyting</div>
-                </div>
-            </div>
+            `}
         `}
 
         ${!isUserAdmin ? `
@@ -1275,19 +1712,19 @@ window.onload = async () => {
     if (session) {
         const user = JSON.parse(session);
         isAdmin = user.role === 'admin';
+        isTeacher = user.role === 'teacher';
 
         // Refresh user data from server on load
         await fetchData();
-        const fullUser = users.find(u => u.user === user.user); // local users array is a fallback
 
-        // But better to use the result of fetchData if server handles multi-user data endpoint
-        // For now, let's just use the session user and sync stats
         APP_DATA.user = {
             name: user.name,
             class: user.class,
             score: user.score || 0,
             testsTaken: user.testsTaken || 0,
-            username: user.user
+            username: user.user,
+            role: user.role,
+            completedTests: user.completedTests || {}
         };
 
         document.getElementById('login-screen').classList.add('hidden');
@@ -1298,7 +1735,10 @@ window.onload = async () => {
         initSocketListeners();
         initPullToRefresh();
         renderBottomNav();
-        currentSection = isAdmin ? 'admin' : 'home';
+
+        if (isAdmin) currentSection = 'admin';
+        else currentSection = 'home';
+
         renderSection();
 
         // Auto-refresh data every 2 seconds in background
@@ -1312,44 +1752,82 @@ window.onload = async () => {
 
 async function addNewUser() {
     const name = document.getElementById('new-user-fullname').value;
-    const className = document.getElementById('new-user-class').value;
     const login = document.getElementById('new-user-login').value;
     const pass = document.getElementById('new-user-pass').value;
     const role = document.getElementById('new-user-role').value;
+
+    let className = "";
+    let teacherSubject = "";
+
+    if (role === 'student') {
+        const grade = document.getElementById('new-user-grade').value;
+        const letter = document.getElementById('new-user-letter').value;
+        if (!grade) {
+            showCustomAlert("Sinf raqamini kiriting!");
+            return;
+        }
+        className = `${grade}-${letter}`;
+    } else {
+        const subjectId = document.getElementById('new-user-subject').value;
+        const subject = APP_DATA.subjects.find(s => s.id === subjectId);
+        className = subject ? `${subject.name} o'qituvchisi` : "O'qituvchi";
+        teacherSubject = subjectId;
+    }
 
     if (name && login && pass) {
         const response = await fetch(`${API_BASE}/users`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, class: className, user: login, pass, role })
+            body: JSON.stringify({
+                name,
+                class: className,
+                user: login,
+                pass,
+                role,
+                subject: teacherSubject
+            })
         });
 
         if (response.ok) {
             await fetchData();
-            alert("Foydalanuvchi muvaffaqiyatli yaratildi!");
+            showCustomAlert("Foydalanuvchi muvaffaqiyatli yaratildi!");
             renderAdmin(document.getElementById('app-content'));
         } else {
             const data = await response.json();
-            alert(data.message || "Xatolik yuz berdi!");
+            showCustomAlert(data.message || "Xatolik yuz berdi!");
         }
     } else {
-        alert("Ism, login va parolni to'ldiring!");
+        showCustomAlert("Barcha maydonlarni to'ldiring!");
+    }
+}
+
+function toggleUserRoleFields(role) {
+    const studentFields = document.getElementById('student-class-fields');
+    const teacherFields = document.getElementById('teacher-subject-fields');
+
+    if (role === 'student') {
+        studentFields.classList.remove('hidden');
+        teacherFields.classList.add('hidden');
+    } else {
+        studentFields.classList.add('hidden');
+        teacherFields.classList.remove('hidden');
     }
 }
 
 async function deleteUser(username) {
-    if (confirm(`${username} foydalanuvchisini o'chirib tashlamoqchimisiz?`)) {
+    const quit = await showCustomConfirm("O'chirish", `${username} foydalanuvchisini o'chirib tashlamoqchimisiz?`);
+    if (quit) {
         const response = await fetch(`${API_BASE}/users/${username}`, {
             method: 'DELETE'
         });
 
         if (response.ok) {
             await fetchData();
-            alert("Foydalanuvchi o'chirildi!");
+            showCustomAlert("Foydalanuvchi o'chirildi!");
             renderSection();
         } else {
             const data = await response.json();
-            alert(data.message || "Xatolik!");
+            showCustomAlert(data.message || "Xatolik!");
         }
     }
 }
@@ -1410,4 +1888,3 @@ function initPullToRefresh() {
         pullDistance = 0;
     });
 }
-
